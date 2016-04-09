@@ -105,7 +105,9 @@ namespace Couchbase.Lite {
         /// Gets a value indicating whether this instance is conflict.
         /// </summary>
         /// <value><c>true</c> if this instance is conflict; otherwise, <c>false</c>.</value>
-        public Boolean IsConflict { get; private set; }
+        public bool IsConflict { get; private set; }
+
+        public bool IsExpiration { get; internal set; }
 
         /// <summary>
         /// Gets the remote URL of the source Database from which this change was replicated.

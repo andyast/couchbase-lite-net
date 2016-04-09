@@ -110,6 +110,7 @@ namespace Couchbase.Lite
         private object                                  _allReplicatorsLocker = new object();
         private bool                                    _readonly;
         private Task                                    _closingTask;
+        private Timer                                   _expirePurgeTimer;
 
         #endregion
 
@@ -2064,6 +2065,8 @@ namespace Couchbase.Lite
                     throw;
                 }
             }
+
+            _expirePurgeTimer = new Timer(PurgeExpired, null, options.ExpirePurgeInterval, options.ExpirePurgeInterval);
         }
 
         internal void Open()
@@ -2075,6 +2078,29 @@ namespace Couchbase.Lite
         #endregion
 
         #region Private Methods
+
+        private void PurgeExpired(object state)
+        {
+            Log.To.Database.V(TAG, "{0} running purge job NOW...", this);
+            var results = Storage.PurgeExpired();
+            var changedEvt = _changed;
+            if (results.Count > 0) {
+                Log.To.Database.I(TAG, "{0} purged {1} expired documents", this, results.Count);
+                if (changedEvt != null) {
+                    var changes = new List<DocumentChange>();
+                    var args = new DatabaseChangeEventArgs();
+                    args.Source = this;
+                    foreach (var result in results) {
+                        var change = new DocumentChange(new RevisionInternal(result, null, true), null, false, null);
+                        change.IsExpiration = true;
+                        changes.Add(change);
+                    }
+
+                    args.Changes = changes;
+                    changedEvt(this, args);
+                }
+            }
+        }
 
         private static Type GetSQLiteStorageClass()
         {

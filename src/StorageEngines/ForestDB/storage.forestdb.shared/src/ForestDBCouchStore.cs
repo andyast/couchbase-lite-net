@@ -162,7 +162,7 @@ namespace Couchbase.Lite.Storage.ForestDB
 
         static ForestDBCouchStore()
         {
-            Log.To.Database.I(TAG, "Initialized ForestDB store (version 'BETA' (25381d66243755ebae8675ef65630c4253ca3f4b))");
+            Log.To.Database.I(TAG, "Initialized ForestDB store (version 'BETA' (e189e9a0d8c3addca7b632dafe04b239c7c1b16f))");
             Native.c4log_register(C4LogLevel.Debug, (level, msg) =>
             {
                 switch(level) {
@@ -192,12 +192,12 @@ namespace Couchbase.Lite.Storage.ForestDB
 
         #region Public Methods
 
-        public RevisionInternal GetDocument(string docId, long sequence)
+        public RevisionInternal GetDocument(long sequence)
         {
             var retVal = default(RevisionInternal);
-            WithC4Document(docId, sequence, doc =>
+            WithC4Document(sequence, doc =>
             {
-                Log.To.Database.D(TAG, "Read {0} seq {1}", docId, sequence);
+                Log.To.Database.D(TAG, "Read seq {0}", sequence);
                 retVal = new ForestRevisionInternal(doc, true);
             });
 
@@ -323,7 +323,7 @@ namespace Couchbase.Lite.Storage.ForestDB
             }
         }
 
-        private void WithC4Document(string docId, long sequence, C4DocumentActionDelegate block)
+        private void WithC4Document(long sequence, C4DocumentActionDelegate block)
         {
             var doc = default(C4Document*);
             try {
@@ -332,6 +332,10 @@ namespace Couchbase.Lite.Storage.ForestDB
                 if (e.Domain != C4ErrorDomain.ForestDB && (ForestDBStatus)e.Code != ForestDBStatus.KeyNotFound) {
                     throw;
                 }
+            }
+
+            if (doc->Expired) {
+                return;
             }
 
             try {
@@ -642,6 +646,15 @@ namespace Couchbase.Lite.Storage.ForestDB
             return retVal;
         }
 
+        public void SetDocumentExpiration(string documentId, long? expiration)
+        {
+            if (expiration.HasValue) {
+                ForestDBBridge.Check(err => Native.c4doc_setExpiration(Forest, documentId, (ulong)expiration.Value, err));
+            } else {
+                Native.c4doc_cancelExpiration(Forest, documentId);
+            }
+        }
+
         public RevisionInternal GetParentRevision(RevisionInternal rev)
         {
             var retVal = default(RevisionInternal);
@@ -761,6 +774,10 @@ namespace Couchbase.Lite.Storage.ForestDB
             var changes = new RevisionList();
             var e = new CBForestDocEnumerator(Forest, lastSequence, forestOps);
             foreach (var next in e) {
+                if (next.Expired) {
+                    continue;
+                }
+
                 var revs = default(IEnumerable<RevisionInternal>);
                 if (options.IncludeConflicts) {
                     using (var enumerator = new CBForestHistoryEnumerator(next.GetDocument(), true, false)) {
@@ -983,6 +1000,18 @@ namespace Couchbase.Lite.Storage.ForestDB
             });
 
             return result;
+        }
+
+        public IList<string> PurgeExpired()
+        {
+            var results = new List<string>();
+            foreach (var expired in new CBForestExpiryEnumerator(Forest, true)) {
+                results.Add(expired);
+            }
+                
+            var purgeMap = results.ToDictionary<string, string, IList<string>>(x => x, x => new List<string> { "*" });
+            PurgeRevisions(purgeMap);
+            return results;
         }
 
         public RevisionInternal GetLocalDocument(string docId, string revId)

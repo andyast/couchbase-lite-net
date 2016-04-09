@@ -112,6 +112,23 @@ namespace Couchbase.Lite {
         public bool Deleted { get { return CurrentRevision == null && LeafRevisions.Any (); } }
 
         /// <summary>
+        /// Gets if the <see cref="Couchbase.Lite.Document"/> is expired and should be auto-purged.
+        /// </summary>
+        /// <value><c>true</c> if expired; otherwise, <c>false</c>.</value>
+        /*public bool Expired 
+        { 
+            get {
+                var exp = Database.Storage.GetDocumentExpiration(Id);
+                if (!exp.HasValue) {
+                    return false;
+                }
+
+                var nowStamp = DateTime.Now.MillisecondsSinceEpoch() / 1000;
+                return exp <= nowStamp;
+            }
+        }*/
+
+        /// <summary>
         /// If known, gets the Id of the current <see cref="Couchbase.Lite.Revision"/>, otherwise null.
         /// </summary>
         /// <value>The Id of the current <see cref="Couchbase.Lite.Revision"/> if known, otherwise null.</value>
@@ -403,6 +420,44 @@ namespace Couchbase.Lite {
             } while (lastErrorCode == StatusCode.Conflict);
 
             return null;
+        }
+
+        /// <summary>
+        /// Sets an absolute point in time for the document to expire.  Must be
+        /// a DateTime in the future.
+        /// </summary>
+        /// <param name="expireTime">The time at which the document expires, and is
+        /// eligible to be auto-purged</param>
+        /// <exception cref="System.InvalidOperationException">The expireTime is not in the future</exception>
+        public void ExpireAt(DateTime expireTime)
+        {
+            var nowStamp = DateTime.UtcNow.MillisecondsSinceEpoch() / 1000;
+            var stamp = expireTime.MillisecondsSinceEpoch() / 1000;
+            if (stamp <= nowStamp) {
+                throw new InvalidOperationException("ExpireAt must provide a date in the future");
+            }
+
+            Database.Storage.SetDocumentExpiration(Id, stamp);
+        }
+
+        /// <summary>
+        /// Sets an interval to wait before expiring the document.
+        /// </summary>
+        /// <param name="timeInterval">The time to wait before expiring the document and
+        /// making it eligible for auto-purging.</param>
+        public void ExpireAfter(TimeSpan timeInterval)
+        {
+            var expireTime = DateTime.UtcNow + timeInterval;
+            var stamp = expireTime.MillisecondsSinceEpoch() / 1000;
+            Database.Storage.SetDocumentExpiration(Id, stamp);
+        }
+
+        /// <summary>
+        /// Cancels the expiration date on the document
+        /// </summary>
+        public void CancelExpire()
+        {
+            Database.Storage.SetDocumentExpiration(Id, null);
         }
 
         /// <summary>
