@@ -162,7 +162,7 @@ namespace Couchbase.Lite.Storage.ForestDB
 
         static ForestDBCouchStore()
         {
-            Log.To.Database.I(TAG, "Initialized ForestDB store (version 'BETA' (e189e9a0d8c3addca7b632dafe04b239c7c1b16f))");
+            Log.To.Database.I(TAG, "Initialized ForestDB store (version 'BETA' (e4ea0899f0b37e85adb2b315388c9be3e45b2749))");
             Native.c4log_register(C4LogLevel.Debug, (level, msg) =>
             {
                 switch(level) {
@@ -334,7 +334,7 @@ namespace Couchbase.Lite.Storage.ForestDB
                 }
             }
 
-            if (doc->Expired) {
+            if (Native.c4doc_isExpired(Forest, doc->docID)) {
                 return;
             }
 
@@ -646,12 +646,13 @@ namespace Couchbase.Lite.Storage.ForestDB
             return retVal;
         }
 
-        public void SetDocumentExpiration(string documentId, long? expiration)
+        public void SetDocumentExpiration(string documentId, DateTime? expiration)
         {
             if (expiration.HasValue) {
-                ForestDBBridge.Check(err => Native.c4doc_setExpiration(Forest, documentId, (ulong)expiration.Value, err));
+                var timestamp = expiration.Value.ToUniversalTime().MillisecondsSinceEpoch() / 1000;
+                ForestDBBridge.Check(err => Native.c4doc_setExpiration(Forest, documentId, timestamp, err));
             } else {
-                Native.c4doc_cancelExpiration(Forest, documentId);
+                ForestDBBridge.Check(err => Native.c4doc_setExpiration(Forest, documentId, UInt64.MaxValue, err));
             }
         }
 
@@ -774,7 +775,7 @@ namespace Couchbase.Lite.Storage.ForestDB
             var changes = new RevisionList();
             var e = new CBForestDocEnumerator(Forest, lastSequence, forestOps);
             foreach (var next in e) {
-                if (next.Expired) {
+                if (Native.c4doc_isExpired(Forest, next.DocumentInfo->docID)) {
                     continue;
                 }
 
