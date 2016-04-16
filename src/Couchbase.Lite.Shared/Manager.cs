@@ -245,7 +245,7 @@ namespace Couchbase.Lite
 
             UpgradeOldDatabaseFiles(directoryFile);
 
-            #if __IOS__
+#if __IOS__
 
             Foundation.NSString protection;
             switch(options.FileProtection & Foundation.NSDataWritingOptions.FileProtectionMask) {
@@ -267,7 +267,7 @@ namespace Couchbase.Lite
             Foundation.NSError error;
             Foundation.NSFileManager.DefaultManager.SetAttributes(attributes, directoryFile.FullName, out error);
 
-            #endif
+#endif
 
             var scheduler = options.CallbackScheduler;
             CapturedContext = new TaskFactory(scheduler);
@@ -279,9 +279,9 @@ namespace Couchbase.Lite
             Log.To.Database.I(TAG, "Created {0}", this);
         }
 
-    #endregion
+#endregion
 
-    #region Instance Members
+#region Instance Members
         //Properties
         /// <summary>
         /// Gets the directory where the <see cref="Couchbase.Lite.Manager"/> stores <see cref="Couchbase.Lite.Database"/>.
@@ -568,9 +568,9 @@ namespace Couchbase.Lite
             System.IO.Directory.Delete(tempPath, true);
         }
 
-    #endregion
+#endregion
     
-    #region Non-public Members
+#region Non-public Members
 
         // Static Fields
         private static readonly ObjectWriter mapper;
@@ -667,16 +667,19 @@ namespace Couchbase.Lite
         private static bool ReadVersion(Assembly assembly, out string branch, out string hash)
         {
             branch = "No branch";
-            using (Stream stream = assembly.GetManifestResourceStream("version")) {
+            hash = "No git information";
+            try {
+                Stream stream = assembly.GetManifestResourceStream("version");
                 if(stream != null) {
                     using (StreamReader reader = new StreamReader(stream))
                     {
                         hash = reader.ReadToEnd();
                     }
                 } else {
-                    hash = "No git information";
                     return false;
                 }
+            } catch(NotSupportedException) {
+                return false;
             }
 
             var colonPos = hash.IndexOf(':');
@@ -1003,18 +1006,18 @@ namespace Couchbase.Lite
             return options;
         }
 
-    #endregion
+#endregion
 
-        #region Overrides
-        #pragma warning disable 1591
+#region Overrides
+#pragma warning disable 1591
 
         public override string ToString()
         {
             return String.Format("Manager[Dir={0} Options={1}]", Directory, Options);
         }
 
-        #pragma warning restore 1591
-        #endregion
+#pragma warning restore 1591
+#endregion
     }
 
 }
