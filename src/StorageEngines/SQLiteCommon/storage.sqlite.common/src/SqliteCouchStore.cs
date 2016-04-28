@@ -455,6 +455,8 @@ namespace Couchbase.Lite.Storage.SQLCipher
 
                 if(dbVersion < 102) {
                     const string upgradeSql = "ALTER TABLE docs ADD COLUMN expiry_timestamp INTEGER;" +
+                        "CREATE INDEX IF NOT EXISTS docs_expiry ON docs(expiry_timestamp)" +
+                        "WHERE expiry_timestamp not null;" +
                         "PRAGMA user_version = 102";
                     RunStatements(upgradeSql);
                     dbVersion = 102;
@@ -1067,17 +1069,33 @@ namespace Couchbase.Lite.Storage.SQLCipher
                 return 0L;
             }
 
-            return QueryOrDefault<long>(c => c.GetLong(0), false, 0L, "SELECT sequence FROM revs WHERE doc_id=? AND revid=? LIMIT 1", docNumericId, rev.RevID);
+            return QueryOrDefault(c => c.GetLong(0), false, 0L, "SELECT sequence FROM revs WHERE doc_id=? AND revid=? LIMIT 1", docNumericId, rev.RevID);
         }
 
-        public long? GetDocumentExpiration(string documentId)
+        public DateTime? NextDocumentExpiry()
+        {
+            var result = QueryOrDefault<long?>(c => c.GetLong(0), true, null, "SELECT expiry_timestamp FROM " +
+                "docs WHERE expiry_timestamp IS NOT NULL ORDER BY expiry_timestamp ASC LIMIT 1");
+            if(result == null) {
+                return null;
+            }
+
+            return Misc.CreateDate((ulong)(result.Value * 1000));
+        }
+
+        public DateTime? GetDocumentExpiration(string documentId)
         {
             var docNumericId = GetDocNumericID(documentId);
             if (docNumericId <= 0L) {
                 return null;
             }
 
-            return QueryOrDefault<long?>(c => c.GetLong(0), false, null, "SELECT expiry_timestamp FROM docs WHERE doc_id=? AND expiry_timestamp IS NOT NULL", docNumericId);
+            var result = QueryOrDefault<long?>(c => c.GetLong(0), false, null, "SELECT expiry_timestamp FROM docs WHERE doc_id=? AND expiry_timestamp IS NOT NULL", docNumericId);
+            if(result == null) {
+                return null;
+            }
+
+            return Misc.CreateDate((ulong)(result.Value * 1000));
         }
 
         public void SetDocumentExpiration(string documentId, DateTime? expiration)
@@ -1089,14 +1107,13 @@ namespace Couchbase.Lite.Storage.SQLCipher
                 throw Misc.CreateExceptionAndLog(Log.To.Database, StatusCode.DbError, TAG, msg);
             }
 
-            var vals = new ContentValues(1);
             if (expiration.HasValue) {
-                vals["expiry_timestamp"] = expiration.Value;
+                StorageEngine.ExecSQL("UPDATE docs SET expiry_timestamp=? WHERE doc_id=?", expiration.Value,
+                    docNumericId);
             } else {
-                vals["expiry_timestamp"] = null;
+                StorageEngine.ExecSQL("UPDATE docs SET expiry_timestamp=null WHERE doc_id=?",
+                    docNumericId);
             }
-
-            StorageEngine.Update("docs", vals, "doc_id=?", docNumericId.ToString());
         }
 
         public RevisionInternal GetParentRevision(RevisionInternal rev)
@@ -2074,17 +2091,26 @@ namespace Couchbase.Lite.Storage.SQLCipher
         {
             var result = new List<string>();
             var sequences = new List<long>();
+            var now = DateTime.UtcNow;
             TryQuery(c =>
             {
                 sequences.Add(c.GetLong(0));
                 result.Add(c.GetString(1));
 
                 return true;
-            }, false, "SELECT * FROM docs WHERE expiry_timestamp IS NOT NULL AND expiry_timestamp <= ?", DateTime.UtcNow);
+            }, false, "SELECT * FROM docs WHERE expiry_timestamp <= ?", now);
                 
             if (result.Count > 0) {
                 var deleteSql = String.Format("sequence in ({0})", String.Join(", ", sequences.ToStringArray()));
-                StorageEngine.Delete("revs", deleteSql);
+                var vals = new ContentValues(1);
+                vals["expiry_timestamp"] = null;
+                RunInTransaction(() =>
+                {
+                    StorageEngine.Delete("revs", deleteSql);
+                    StorageEngine.ExecSQL("UPDATE docs SET expiry_timestamp=null WHERE expiry_timestamp <= ?", now);
+                    return true;
+                });
+                
             }
 
             return result;

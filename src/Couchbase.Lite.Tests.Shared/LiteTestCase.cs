@@ -118,6 +118,11 @@ namespace Couchbase.Lite
         [SetUp]
         protected virtual void SetUp()
         {
+            var nunitListener = Debug.Listeners.Cast<TraceListener>().Where(tl => tl.Name == "NUnit").FirstOrDefault();
+            if(nunitListener != null) {
+                Debug.Listeners.Remove(nunitListener);
+            }
+
             WriteDebug("SetUp");
             ManagerOptions.Default.CallbackScheduler = new SingleTaskThreadpoolScheduler();
             Log.ScrubSensitivity = LogScrubSensitivity.AllOK;
@@ -476,12 +481,17 @@ namespace Couchbase.Lite
 
         internal static void CreateDocuments(Database db, int n)
         {
-            for (int i = 0; i < n; i++) {
-                var properties = new Dictionary<string, object>();
-                properties.Add("testName", "testDatabase");
-                properties.Add("sequence", i);
-                CreateDocumentWithProperties(db, properties);
-            }
+            db.RunInTransaction(() =>
+            {
+                for(int i = 0; i < n; i++) {
+                    var properties = new Dictionary<string, object>();
+                    properties.Add("testName", "testDatabase");
+                    properties.Add("sequence", i);
+                    CreateDocumentWithProperties(db, properties);
+                }
+
+                return true;
+            });
         }
 
         internal static Task CreateDocumentsAsync(Database database, int n)

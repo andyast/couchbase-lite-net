@@ -646,6 +646,16 @@ namespace Couchbase.Lite.Storage.ForestDB
             return retVal;
         }
 
+        public DateTime? NextDocumentExpiry()
+        {
+            throw new NotImplementedException();
+        }
+
+        public DateTime? GetDocumentExpiration(string documentId)
+        {
+            throw new NotImplementedException();
+        }
+
         public void SetDocumentExpiration(string documentId, DateTime? expiration)
         {
             if (expiration.HasValue) {
