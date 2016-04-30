@@ -1080,7 +1080,7 @@ namespace Couchbase.Lite.Storage.SQLCipher
                 return null;
             }
 
-            return Misc.CreateDate((ulong)(result.Value * 1000));
+            return Misc.OffsetFromEpoch(TimeSpan.FromSeconds(result.Value));
         }
 
         public DateTime? GetDocumentExpiration(string documentId)
@@ -1095,7 +1095,7 @@ namespace Couchbase.Lite.Storage.SQLCipher
                 return null;
             }
 
-            return Misc.CreateDate((ulong)(result.Value * 1000));
+            return Misc.OffsetFromEpoch(TimeSpan.FromSeconds(result.Value));
         }
 
         public void SetDocumentExpiration(string documentId, DateTime? expiration)
@@ -1558,12 +1558,11 @@ namespace Couchbase.Lite.Storage.SQLCipher
             // http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 
             bool includeDocs = options.IncludeDocs || filter != null;
-            var nowStamp = DateTime.Now.MillisecondsSinceEpoch() / 1000;
             var sql = String.Format("SELECT sequence, revs.doc_id, docid, revid, deleted {0} FROM revs, docs " +
-                "WHERE sequence > ? AND current=1 AND expiry_timestamp > ? " +
+                "WHERE sequence > ? AND current=1 " +
                 "AND revs.doc_id = docs.doc_id " +
                 "ORDER BY revs.doc_id, revid DESC",
-                (includeDocs ? @", json" : @""), DateTime.Now.MillisecondsSinceEpoch() / 1000);
+                (includeDocs ? @", json" : @""));
 
             var changes = new RevisionList();
             long lastDocId = 0L;
@@ -1593,7 +1592,7 @@ namespace Couchbase.Lite.Storage.SQLCipher
                 }
 
                 return true;
-            }, false, sql, lastSequence, nowStamp);
+            }, false, sql, lastSequence);
 
             if (options.SortBySequence) {
                 changes.SortBySequence(!options.Descending);

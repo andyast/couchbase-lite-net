@@ -237,7 +237,7 @@ namespace Couchbase.Lite.Auth
                 result[AssertionFieldOrigin] = component3Json.Get("aud");
 
                 var expObject = (ulong)component3Json.Get("exp");
-                var expDate = Misc.CreateDate(expObject);
+                var expDate = Misc.OffsetFromEpoch(TimeSpan.FromMilliseconds(expObject));
                 result[AssertionFieldExpiration] = expDate;
             } catch (Exception e) {
                 throw Misc.CreateExceptionAndLog(Log.To.Sync, e, Tag,

@@ -91,7 +91,7 @@ namespace Couchbase.Lite.Util
 
             _scheduler.StartNew(() =>
             {
-                props["t"] = time.MillisecondsSinceEpoch();
+                props["t"] = (ulong)time.TimeSinceEpoch().TotalMilliseconds;
                 var json = default(byte[]);
                 try {
                     json = Manager.GetObjectMapper().WriteValueAsBytes(props).ToArray();
@@ -181,10 +181,10 @@ namespace Couchbase.Lite.Util
 
                 q.InclusiveStart = false;
             } else {
-                startStamp = start > DateTime.MinValue ? start.MillisecondsSinceEpoch() : 0;
+                startStamp = start > DateTime.MinValue ? (ulong)start.TimeSinceEpoch().TotalMilliseconds : 0UL;
             }
 
-            var endStamp = end < DateTime.MaxValue ? end.MillisecondsSinceEpoch() : UInt64.MaxValue;
+            var endStamp = end < DateTime.MaxValue ? (ulong)end.TimeSinceEpoch().TotalMilliseconds : UInt64.MaxValue;
 
             var e = default(QueryEnumerator);
             if (startStamp < endStamp) {
@@ -222,7 +222,7 @@ namespace Couchbase.Lite.Util
                     yield break;
                 }
 
-                gotEvent["t"] = Misc.CreateDate(curStamp);
+                gotEvent["t"] = Misc.OffsetFromEpoch(TimeSpan.FromMilliseconds(curStamp));
                 gotEvent.Remove("dt");
                 yield return gotEvent;
             }
@@ -238,7 +238,7 @@ namespace Couchbase.Lite.Util
         private IList<IDictionary<string, object>> GetEvents(DateTime t, ref ulong startStamp)
         {
             var q = _db.CreateAllDocumentsQuery();
-            var timestamp = t > DateTime.MinValue ? t.MillisecondsSinceEpoch() : 0;
+            var timestamp = t > DateTime.MinValue ? (ulong)t.TimeSinceEpoch().TotalMilliseconds : 0;
             q.StartKey = MakeDocID(timestamp);
             q.Descending = true;
             q.Limit = 1;

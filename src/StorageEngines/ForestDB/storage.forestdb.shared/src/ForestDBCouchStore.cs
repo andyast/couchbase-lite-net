@@ -162,7 +162,7 @@ namespace Couchbase.Lite.Storage.ForestDB
 
         static ForestDBCouchStore()
         {
-            Log.To.Database.I(TAG, "Initialized ForestDB store (version 'BETA' (e4ea0899f0b37e85adb2b315388c9be3e45b2749))");
+            Log.To.Database.I(TAG, "Initialized ForestDB store at commit 43910111c6b25b41ba1473126e09d0bbd24136b1");
             Native.c4log_register(C4LogLevel.Debug, (level, msg) =>
             {
                 switch(level) {
@@ -293,27 +293,32 @@ namespace Couchbase.Lite.Storage.ForestDB
 
         private void WithC4Document(string docId, string revId, bool withBody, bool create, C4DocumentActionDelegate block)
         {
-            var doc = default(C4Document*);
-            try {
-                doc = (C4Document*)ForestDBBridge.Check(err => Native.c4doc_get(Forest, docId, !create, err));
+            var doc = (C4Document*)RetryHandler.RetryIfBusy().AllowErrors(
+                    new C4Error {
+                        domain = C4ErrorDomain.ForestDB,
+                        code = (int)ForestDBStatus.KeyNotFound
+                    },
+                    new C4Error {
+                        domain = C4ErrorDomain.HTTP,
+                        code = 404
+                    }).Execute(err => Native.c4doc_get(Forest, docId, !create, err));
+
+            if(doc != null) {
                 if(revId != null) {
-                    ForestDBBridge.Check(err => Native.c4doc_selectRevision(doc, revId, withBody, err));
+                  RetryHandler.RetryIfBusy().AllowErrors(
+                      new C4Error {
+                          domain = C4ErrorDomain.HTTP,
+                          code = 410
+                      }).Execute(err => Native.c4doc_selectRevision(doc, revId, withBody, err));
                 }
 
                 if(withBody) {
-                    ForestDBBridge.Check(err => Native.c4doc_loadRevisionBody(doc, err));
+                    RetryHandler.RetryIfBusy().AllowErrors(
+                        new C4Error {
+                            domain = C4ErrorDomain.HTTP,
+                            code = 410
+                        }).Execute(err => Native.c4doc_loadRevisionBody(doc, err));
                 }
-            } catch(CBForestException e) {
-                var is404 = e.Domain == C4ErrorDomain.ForestDB && e.Code == (int)ForestDBStatus.KeyNotFound;
-                is404 |= e.Domain == C4ErrorDomain.HTTP && e.Code == 404;
-                var is410 = e.Domain == C4ErrorDomain.HTTP && e.Code == 410; // Body compacted
-
-                if (!is404 && !is410) {
-                    throw;
-                }
-
-                Native.c4doc_free(doc); // In case the failure was in selectRevision
-                doc = null;
             }
 
             try {
@@ -332,10 +337,6 @@ namespace Couchbase.Lite.Storage.ForestDB
                 if (e.Domain != C4ErrorDomain.ForestDB && (ForestDBStatus)e.Code != ForestDBStatus.KeyNotFound) {
                     throw;
                 }
-            }
-
-            if (Native.c4doc_isExpired(Forest, doc->docID)) {
-                return;
             }
 
             try {
@@ -648,18 +649,28 @@ namespace Couchbase.Lite.Storage.ForestDB
 
         public DateTime? NextDocumentExpiry()
         {
-            throw new NotImplementedException();
+            var timestamp = Native.c4db_nextDocExpiration(Forest);
+            if(timestamp == 0UL) {
+                return null;
+            }
+
+            return Misc.OffsetFromEpoch(TimeSpan.FromSeconds(timestamp));
         }
 
         public DateTime? GetDocumentExpiration(string documentId)
         {
-            throw new NotImplementedException();
+            var timestamp = Native.c4doc_getExpiration(Forest, documentId);
+            if(timestamp == 0UL) {
+                return null;
+            }
+
+            return Misc.OffsetFromEpoch(TimeSpan.FromSeconds(timestamp));
         }
 
         public void SetDocumentExpiration(string documentId, DateTime? expiration)
         {
             if (expiration.HasValue) {
-                var timestamp = expiration.Value.ToUniversalTime().MillisecondsSinceEpoch() / 1000;
+                var timestamp = (ulong)expiration.Value.ToUniversalTime().TimeSinceEpoch().TotalSeconds;
                 ForestDBBridge.Check(err => Native.c4doc_setExpiration(Forest, documentId, timestamp, err));
             } else {
                 ForestDBBridge.Check(err => Native.c4doc_setExpiration(Forest, documentId, UInt64.MaxValue, err));
@@ -785,10 +796,6 @@ namespace Couchbase.Lite.Storage.ForestDB
             var changes = new RevisionList();
             var e = new CBForestDocEnumerator(Forest, lastSequence, forestOps);
             foreach (var next in e) {
-                if (Native.c4doc_isExpired(Forest, next.DocumentInfo->docID)) {
-                    continue;
-                }
-
                 var revs = default(IEnumerable<RevisionInternal>);
                 if (options.IncludeConflicts) {
                     using (var enumerator = new CBForestHistoryEnumerator(next.GetDocument(), true, false)) {

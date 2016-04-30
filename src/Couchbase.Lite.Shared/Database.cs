@@ -286,7 +286,7 @@ namespace Couchbase.Lite
 
             _changesToNotify = new List<DocumentChange>();
             Scheduler = new TaskFactory(new SingleTaskThreadpoolScheduler());
-            StartTime = DateTime.UtcNow.MillisecondsSinceEpoch();
+            StartTime = (ulong)DateTime.UtcNow.TimeSinceEpoch().TotalMilliseconds;
         }
 
         #endregion
@@ -2118,6 +2118,8 @@ namespace Couchbase.Lite
                     changedEvt(this, args);
                 }
             }
+
+            SchedulePurgeExpired(TimeSpan.FromSeconds(1));
         }
 
         private static Type GetSQLiteStorageClass()
