@@ -909,11 +909,6 @@ namespace Couchbase.Lite.Replicator
                 return;
             }
 
-            var removed = change.Get("removed") != null;
-            if (removed) {
-                return;
-            }
-
             if (!Document.IsValidDocumentId(docID)) {
                 if (!docID.StartsWith("_user/", StringComparison.InvariantCultureIgnoreCase)) {
                     Log.W(TAG, string.Format("{0}: Received invalid doc ID from _changes: {1} ({2})", this, docID, Manager.GetObjectMapper().WriteValueAsString(change)));
