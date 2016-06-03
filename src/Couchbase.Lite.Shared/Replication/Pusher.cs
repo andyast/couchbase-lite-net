@@ -366,7 +366,7 @@ namespace Couchbase.Lite.Replicator
 
             //This prevents a NullReferenceException when iterating over the keys collection
             if (attachments == null) {
-                return true;
+                return false;
             }
 
             foreach (var attachmentKey in attachments.Keys) {
