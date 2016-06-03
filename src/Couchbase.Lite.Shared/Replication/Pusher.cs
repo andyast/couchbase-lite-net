@@ -363,6 +363,12 @@ namespace Couchbase.Lite.Replicator
             var revProps = revision.GetProperties();
 
             var attachments = revProps.Get("_attachments").AsDictionary<string,object>();
+
+            //This prevents a NullReferenceException when iterating over the keys collection
+            if (attachments == null) {
+                return true;
+            }
+
             foreach (var attachmentKey in attachments.Keys) {
                 var attachment = attachments.Get(attachmentKey).AsDictionary<string,object>();
                 if (attachment.ContainsKey("follows")) {
@@ -745,8 +751,11 @@ namespace Couchbase.Lite.Replicator
                                     continue;
                                 }
 
+                                //just having the key is not enough to determine if attachments exist, they could null
+                                var hasAttachments = properties.ContainsKey("_attachments") && properties.Get("_attachments") != null;
+
                                 // Strip any attachments already known to the target db:
-                                if (properties.ContainsKey("_attachments")) {
+                                if (hasAttachments) {
                                     // Look for the latest common ancestor and stuf out older attachments:
                                     var minRevPos = FindCommonAncestor(populatedRev, possibleAncestors);
                                     try {
